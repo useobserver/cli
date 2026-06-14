@@ -1,0 +1,40 @@
+{
+  "name": "observer-cli",
+  "version": "1.0.0",
+  "description": "Observer config-as-code CLI: apply and export Observer configuration via the public API.",
+  "type": "module",
+  "bin": {
+    "observer": "bin.mjs"
+  },
+  "files": [
+    "cli.mjs",
+    "bin.mjs",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "scripts": {
+    "test": "node --test",
+    "build:binary": "bun run scripts/build-binary.mjs",
+    "build:binaries": "bun run scripts/build-binary.mjs --all"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/useobserver/cli.git"
+  },
+  "homepage": "https://github.com/useobserver/cli",
+  "bugs": {
+    "url": "https://github.com/useobserver/cli/issues"
+  },
+  "keywords": [
+    "observer",
+    "config-as-code",
+    "gitops",
+    "status-page",
+    "cli"
+  ],
+  "license": "ISC"
+}
