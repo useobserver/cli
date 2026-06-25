@@ -3,8 +3,10 @@
 //
 // Bun's `--compile` flag bundles the entry point + every imported module into a
 // standalone executable that ships the Bun runtime alongside the JS. No runtime,
-// no `npm install` needed on the target host. One Linux runner cross-compiles
-// every target. See https://bun.com/docs/bundler/executables.
+// no `npm install` needed on the target host. A single macOS runner cross-
+// compiles every target; CI then ad-hoc code-signs the two darwin binaries with
+// the real `codesign` (Bun's cross-compiled darwin signature is rejected by the
+// macOS kernel). See https://bun.com/docs/bundler/executables.
 //
 // Targets:
 //   bun-linux-x64

@@ -1,6 +1,6 @@
 {
   "name": "observer-cli",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Observer config-as-code CLI: apply and export Observer configuration via the public API.",
   "type": "module",
   "bin": {
