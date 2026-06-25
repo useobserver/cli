@@ -10,6 +10,15 @@ name: Build CLI binaries + GitHub release
 # mirror.sh. Produces five Bun-compiled binaries + checksums and attaches them
 # to a public GitHub Release.
 #
+# Runs on macos-latest (Apple Silicon). Bun cross-compiles every target from
+# macOS, AND the two darwin binaries are ad-hoc code-signed here with the real
+# `codesign`. This is deliberate: Bun's cross-compiled darwin binaries carry a
+# "linker-signed" ad-hoc signature that the macOS kernel rejects as invalid
+# ("code or signature have been modified"), so a binary built on Linux is killed
+# with SIGKILL on every Mac. Signing on a real macOS host produces a valid
+# ad-hoc signature; the smoke test then RUNS the host-arch darwin binary so a
+# bad signature fails the job before publish.
+#
 # Local build (private monorepo):  bun run --cwd apps/cli build:binaries
 # Local build (public mirror):     bun run build:binaries
 
@@ -30,7 +39,7 @@ permissions:
 jobs:
   release:
     name: Build CLI binaries
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -66,13 +75,24 @@ jobs:
       - name: Build all targets
         run: bun run build:binaries
 
+      - name: Ad-hoc code-sign the macOS binaries
+        # Bun's cross-compiled darwin binaries ship an invalid "linker-signed"
+        # ad-hoc signature; re-sign with the real codesign so the macOS kernel
+        # accepts them. Must run BEFORE checksums (signing changes the bytes).
+        run: |
+          for bin in dist/observer-darwin-arm64 dist/observer-darwin-x64; do
+            codesign --force --sign - --timestamp=none "$bin"
+            codesign --verify --verbose=2 "$bin"
+          done
+
       - name: Smoke-test the compiled binary
         # The release ships Bun-compiled executables, NOT the Node source the
-        # unit tests run under. Exercise the freshly built host-arch (linux-x64)
-        # binary so a Bun/compile/bundle regression fails the job before publish.
+        # unit tests run under. Run the freshly built host-arch (darwin-arm64)
+        # binary so a Bun/compile/bundle regression OR an invalid code signature
+        # fails the job before publish. (A bad signature SIGKILLs this step.)
         run: |
-          chmod +x dist/observer-linux-x64
-          ./dist/observer-linux-x64 --version
+          chmod +x dist/observer-darwin-arm64
+          ./dist/observer-darwin-arm64 --version
 
       - name: Generate checksums
         working-directory: dist
