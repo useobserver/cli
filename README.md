@@ -8,6 +8,10 @@
   <a href="https://docs.use.observer"><img src="https://img.shields.io/badge/Documentation-link-blue?style=for-the-badge" alt="Documentation link"></a>
 </p>
 
+<p align="center">
+  <a href="https://status.use.observer"><img src="https://status.use.observer/badge.svg?style=for-the-badge" alt="Observer Cloud live status"></a>
+</p>
+
 # Observer CLI
 
 Apply your [Observer](https://use.observer) configuration from version control.
