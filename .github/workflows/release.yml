@@ -8,7 +8,9 @@ name: Build CLI binaries + GitHub release
 #
 # Runs in the PUBLIC repo (useobserver/cli) on cli-v* tags forwarded by
 # mirror.sh. Produces five Bun-compiled binaries + checksums and attaches them
-# to a public GitHub Release.
+# to a public GitHub Release, then force-moves the floating major tag (`v1`
+# for every cli-v1.x.y) so `uses: useobserver/cli@v1` resolves to the newest
+# release of that major.
 #
 # Runs on macos-latest (Apple Silicon). Bun cross-compiles every target from
 # macOS, AND the two darwin binaries are ad-hoc code-signed here with the real
@@ -42,15 +44,15 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.ref || github.ref }}
           fetch-depth: 1
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -102,7 +104,7 @@ jobs:
 
       - name: Upload build artifacts (workflow_dispatch retention)
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: observer-cli-binaries-${{ steps.version.outputs.version }}
           path: dist/*
@@ -112,7 +114,7 @@ jobs:
         # softprops/action-gh-release updates an existing release for the tag if
         # one already exists, so re-running the workflow for a tag is idempotent.
         if: startsWith(github.ref, 'refs/tags/cli-v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: Observer CLI ${{ steps.version.outputs.version }}
@@ -146,3 +148,22 @@ jobs:
             | Windows x64 | `observer-windows-x64.exe`    |
 
             Verify with `sha256sum -c SHA256SUMS.txt`.
+
+      - name: Move the floating major tag
+        # The GitHub Action is consumed as `uses: useobserver/cli@v1`, which
+        # resolves through this tag. Runs after the release is published so a
+        # failed build never moves it. Stable tags only (cli-vX.Y.Z); a
+        # pre-release suffix leaves the major tag where it is. Pushes made
+        # with GITHUB_TOKEN do not trigger workflows, so this cannot loop.
+        if: startsWith(github.ref, 'refs/tags/cli-v')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^cli-v([0-9]+)\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Not a stable release tag ($TAG); leaving the major tag alone."
+            exit 0
+          fi
+          MAJOR="v${BASH_REMATCH[1]}"
+          git tag -f "$MAJOR" "$GITHUB_SHA"
+          git push --force origin "refs/tags/$MAJOR"
+          echo "Moved $MAJOR to $GITHUB_SHA ($TAG)."
