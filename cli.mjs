@@ -7,7 +7,7 @@
 //   observer --version | --help
 //
 // Env:
-//   OBSERVER_API_URL   base URL (default https://api.use.observer)
+//   OBSERVER_API_URL   base URL (default https://use.observer)
 //   OBSERVER_API_KEY   obs_pub_… key with write:config / read:config
 //
 // Exit codes: 0 ok · 1 validation failure / error · 2 usage error.
@@ -16,6 +16,19 @@ import { readFileSync, writeFileSync } from "node:fs";
 import pkg from "./package.json" with { type: "json" };
 
 export const VERSION = pkg.version;
+
+// Canonical API host, matching the OpenAPI spec and the docs. The legacy
+// https://api.use.observer host still serves the same API, so an
+// OBSERVER_API_URL pinned to it keeps working.
+export const DEFAULT_API_URL = "https://use.observer";
+
+// Base URL for API calls: OBSERVER_API_URL when set (any host, including the
+// legacy api. one), else the default. Trailing slashes are dropped so the
+// `${base}/api/v1/...` join never doubles them.
+export function resolveBaseUrl(envValue) {
+  const v = envValue == null || envValue === "" ? DEFAULT_API_URL : envValue;
+  return v.replace(/\/+$/, "");
+}
 
 // Pure arg parser. Never throws / exits — collects unrecognized tokens into
 // `unknown` so main() can reject them. Flags that consume a value refuse to
@@ -49,9 +62,14 @@ export function parseArgs(argv) {
 // Human-readable rendering of an apply response. Pure (testable).
 export function formatResult(json) {
   if (!json) return "no response";
+  // Non-fatal server warnings (e.g. an unmanaged top-level key like
+  // `incidents`) are appended to both the error and the plan/apply output.
+  const warnings = Array.isArray(json.warnings) && json.warnings.length
+    ? `\nWarnings:\n${json.warnings.map((w) => `  ! ${w.path}: ${w.message}`).join("\n")}`
+    : "";
   if (json.errors) {
     const lines = json.errors.map((e) => `  ✗ ${e.path}: ${e.message}`);
-    return `Config invalid (${json.errors.length} error${json.errors.length === 1 ? "" : "s"}):\n${lines.join("\n")}`;
+    return `Config invalid (${json.errors.length} error${json.errors.length === 1 ? "" : "s"}):\n${lines.join("\n")}${warnings}`;
   }
   const s = json.summary ?? {};
   const head = `${json.dry_run ? "Plan" : "Applied"}: ${s.created ?? 0} created, ${s.updated ?? 0} updated, ${s.unchanged ?? 0} unchanged${s.pruned ? `, ${s.pruned} pruned` : ""}`;
@@ -63,7 +81,7 @@ export function formatResult(json) {
       detail.push(`  ${sym} ${bucket.replace(/s$/, "")} ${it.key}`);
     }
   }
-  return detail.length ? `${head}\n${detail.join("\n")}` : head;
+  return (detail.length ? `${head}\n${detail.join("\n")}` : head) + warnings;
 }
 
 const HELP = `observer ${VERSION} — Observer config-as-code CLI
@@ -75,7 +93,7 @@ Usage:
   observer --help                                            print this help
 
 Environment:
-  OBSERVER_API_URL   API base URL (default https://api.use.observer)
+  OBSERVER_API_URL   API base URL (default ${DEFAULT_API_URL})
   OBSERVER_API_KEY   obs_pub_… key with write:config / read:config
 
 Exit codes: 0 ok · 1 validation/error · 2 usage error.`;
@@ -113,7 +131,7 @@ export async function main(argv = process.argv.slice(2)) {
     process.exit(2);
   }
 
-  const base = env("OBSERVER_API_URL", "https://api.use.observer").replace(/\/$/, "");
+  const base = resolveBaseUrl(process.env.OBSERVER_API_URL);
   const key = env("OBSERVER_API_KEY");
   if (!key) {
     console.error("OBSERVER_API_KEY is not set");

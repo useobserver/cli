@@ -1,6 +1,7 @@
 # Observer config-as-code — GitHub composite action.
 #
-# On pull_request: `dry-run` (posts the plan, fails the check on invalid config).
+# On pull_request: `dry-run` (prints the plan to the job log and fails the
+# check on invalid config; nothing is posted to the pull request).
 # On push to main: `apply`.
 #
 # Runs the CLI with the Node already present on GitHub-hosted runners — no
@@ -12,7 +13,7 @@
 #       file: observer.yaml
 #       mode: ${{ github.event_name == 'pull_request' && 'dry-run' || 'apply' }}
 #     env:
-#       OBSERVER_API_URL: ${{ vars.OBSERVER_API_URL }}
+#       OBSERVER_API_URL: ${{ vars.OBSERVER_API_URL }}   # optional; unset/empty = https://use.observer
 #       OBSERVER_API_KEY: ${{ secrets.OBSERVER_API_KEY }}
 name: "Observer config apply"
 description: "Apply (or dry-run) an Observer config-as-code document via the public API"
@@ -37,8 +38,19 @@ runs:
   steps:
     - name: Apply Observer config
       shell: bash
+      # Inputs reach the script through env vars, never inline `${{ }}`
+      # expansion, so a crafted value cannot inject shell.
+      env:
+        OBSERVER_INPUT_FILE: ${{ inputs.file }}
+        OBSERVER_INPUT_MODE: ${{ inputs.mode }}
+        OBSERVER_INPUT_PRUNE: ${{ inputs.prune }}
+        OBSERVER_ACTION_PATH: ${{ github.action_path }}
       run: |
-        flags=""
-        [ "${{ inputs.mode }}" = "dry-run" ] && flags="$flags --dry-run"
-        [ "${{ inputs.prune }}" = "true" ] && flags="$flags --prune"
-        node "${{ github.action_path }}/bin.mjs" apply -f "${{ inputs.file }}" $flags
+        flags=()
+        case "$OBSERVER_INPUT_MODE" in
+          dry-run) flags+=(--dry-run) ;;
+          apply) ;;
+          *) echo "::error::mode must be 'apply' or 'dry-run' (got '$OBSERVER_INPUT_MODE')"; exit 1 ;;
+        esac
+        [ "$OBSERVER_INPUT_PRUNE" = "true" ] && flags+=(--prune)
+        node "$OBSERVER_ACTION_PATH/bin.mjs" apply -f "$OBSERVER_INPUT_FILE" "${flags[@]}"

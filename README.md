@@ -38,8 +38,7 @@ curl -fsSL https://raw.githubusercontent.com/useobserver/cli/main/install.sh | s
 Install to a directory you own (no sudo):
 
 ```bash
-OBSERVER_INSTALL_DIR="$HOME/.local/bin" \
-  curl -fsSL https://raw.githubusercontent.com/useobserver/cli/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/useobserver/cli/main/install.sh | OBSERVER_INSTALL_DIR="$HOME/.local/bin" sh
 ```
 
 Or download a specific binary directly from the
@@ -80,14 +79,17 @@ so there is no binary to download):
     OBSERVER_API_KEY: ${{ secrets.OBSERVER_API_KEY }}
 ```
 
-This plans on pull requests (failing the check on invalid config) and applies on
-merge to your default branch. See [action.yml](./action.yml).
+This plans on pull requests (the plan is printed to the job log, and the check
+fails on invalid config) and applies on merge to your default branch. `@v1`
+tracks the newest 1.x release; pin a full tag such as `@cli-v1.1.0` to freeze
+it. See [action.yml](./action.yml).
 
 ## Configure
 
 ```bash
-export OBSERVER_API_URL="https://api.use.observer"   # your Observer API base
-export OBSERVER_API_KEY="obs_pub_…"                  # key with write:config / read:config
+export OBSERVER_API_KEY="obs_pub_…"   # key with write:config / read:config
+# Optional: OBSERVER_API_URL overrides the API base (default https://use.observer).
+# The older https://api.use.observer host serves the same API and still works.
 ```
 
 Create the key from **Settings → API keys** in the console and grant it the

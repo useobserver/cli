@@ -4,7 +4,7 @@
 // is exercised manually against a live API.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseArgs, formatResult, VERSION } from "../cli.mjs";
+import { parseArgs, formatResult, VERSION, DEFAULT_API_URL, resolveBaseUrl } from "../cli.mjs";
 
 test("VERSION is a semver string", () => {
   assert.match(VERSION, /^\d+\.\d+\.\d+/);
@@ -78,4 +78,27 @@ test("formatResult: labels applied vs plan and shows pruned", () => {
   const out = formatResult({ dry_run: false, summary: { created: 0, updated: 0, unchanged: 0, pruned: 2 }, diff: {} });
   assert.ok(out.includes("Applied:"));
   assert.ok(out.includes("2 pruned"));
+});
+
+test("formatResult: prints non-fatal warnings on plan and on validation errors", () => {
+  const warnings = [{ path: "incidents", message: "incidents are not managed by config; manage incidents via the API" }];
+  const plan = formatResult({ dry_run: true, summary: { created: 0, updated: 0, unchanged: 1 }, diff: {}, warnings });
+  assert.ok(plan.startsWith("Plan:"));
+  assert.ok(plan.includes("Warnings:\n  ! incidents: incidents are not managed by config"));
+  const bad = formatResult({ errors: [{ path: "metrics[0].key", message: "missing" }], warnings });
+  assert.ok(bad.includes("Config invalid (1 error)"));
+  assert.ok(bad.includes("! incidents:"));
+  assert.ok(!formatResult({ dry_run: true, summary: {}, diff: {}, warnings: [] }).includes("Warnings"));
+});
+
+test("resolveBaseUrl: defaults to the canonical https://use.observer host", () => {
+  assert.equal(DEFAULT_API_URL, "https://use.observer");
+  assert.equal(resolveBaseUrl(undefined), "https://use.observer");
+  assert.equal(resolveBaseUrl(""), "https://use.observer");
+});
+
+test("resolveBaseUrl: OBSERVER_API_URL overrides, legacy api. host still accepted", () => {
+  assert.equal(resolveBaseUrl("https://api.use.observer"), "https://api.use.observer");
+  assert.equal(resolveBaseUrl("https://api.use.observer/"), "https://api.use.observer");
+  assert.equal(resolveBaseUrl("http://localhost:3000//"), "http://localhost:3000");
 });
