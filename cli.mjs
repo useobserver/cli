@@ -59,6 +59,32 @@ export function parseArgs(argv) {
   return a;
 }
 
+// A failed request (any non-2xx) as one readable block: the RFC 7807 title,
+// status and detail, the per-item `errors` when there are any, and when to
+// retry for a 429. Pure (testable). `res` is { status, statusText }.
+export function formatProblem(res, json) {
+  const status = res?.status ?? 0;
+  const p = json && typeof json === "object" ? json : null;
+  const title = p?.title ?? (res?.statusText || "request failed");
+  const lines = [`Error ${status}: ${title}${p?.detail ? ` — ${p.detail}` : ""}`];
+  if (Array.isArray(p?.errors)) for (const e of p.errors) lines.push(`  ✗ ${e.path}: ${e.message}`);
+  if (status === 429) {
+    const after = p?.retry_after ?? res?.retryAfter;
+    if (after != null && after !== "") lines.push(`Rate limited: retry after ${after}s.`);
+  }
+  if (p?.upgrade?.url) lines.push(`Upgrade${p.upgrade.label ? ` to ${p.upgrade.label}` : ""}: ${p.upgrade.url}`);
+  return lines.join("\n");
+}
+
+// The output for an apply response: the plan / result on success, the config
+// validation errors on a 422 config_invalid, and the problem otherwise (a 403
+// or 429 is not a validation failure and must not read as "Applied: 0").
+export function formatApplyResponse(res, json) {
+  if (res?.ok) return formatResult(json);
+  if (res?.status === 422 && json?.title === "config_invalid") return formatResult(json);
+  return formatProblem(res, json);
+}
+
 // Human-readable rendering of an apply response. Pure (testable).
 export function formatResult(json) {
   if (!json) return "no response";
@@ -72,7 +98,9 @@ export function formatResult(json) {
     return `Config invalid (${json.errors.length} error${json.errors.length === 1 ? "" : "s"}):\n${lines.join("\n")}${warnings}`;
   }
   const s = json.summary ?? {};
-  const head = `${json.dry_run ? "Plan" : "Applied"}: ${s.created ?? 0} created, ${s.updated ?? 0} updated, ${s.unchanged ?? 0} unchanged${s.pruned ? `, ${s.pruned} pruned` : ""}`;
+  // `referenced`: existing metrics the document names without defining them
+  // (never created or changed), reported by servers that support references.
+  const head = `${json.dry_run ? "Plan" : "Applied"}: ${s.created ?? 0} created, ${s.updated ?? 0} updated, ${s.unchanged ?? 0} unchanged${s.pruned ? `, ${s.pruned} pruned` : ""}${s.referenced ? `, ${s.referenced} existing referenced` : ""}`;
   const detail = [];
   for (const [bucket, items] of Object.entries(json.diff ?? {})) {
     for (const it of items) {
@@ -150,7 +178,11 @@ export async function main(argv = process.argv.slice(2)) {
       body,
     });
     const json = await res.json().catch(() => null);
-    console.log(formatResult(json));
+    const out = formatApplyResponse({ ok: res.ok, status: res.status, statusText: res.statusText, retryAfter: res.headers.get("retry-after") }, json);
+    // Plans and validation errors go to stdout as before; other failures
+    // (auth, plan, rate limit, server) to stderr.
+    if (res.ok || json?.title === "config_invalid") console.log(out);
+    else console.error(out);
     process.exit(res.ok ? 0 : 1);
   }
 
@@ -160,7 +192,8 @@ export async function main(argv = process.argv.slice(2)) {
     qs.set("format", args.format === "yaml" ? "yaml" : "json");
     const res = await fetch(`${base}/api/v1/config/export?${qs}`, { headers: authHeaders });
     if (!res.ok) {
-      console.error(`export failed: ${res.status}`);
+      const json = await res.json().catch(() => null);
+      console.error(`export failed. ${formatProblem({ status: res.status, statusText: res.statusText, retryAfter: res.headers.get("retry-after") }, json)}`);
       process.exit(1);
     }
     const text = args.format === "yaml" ? await res.text() : JSON.stringify(await res.json(), null, 2);

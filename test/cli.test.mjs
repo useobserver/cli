@@ -4,7 +4,7 @@
 // is exercised manually against a live API.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseArgs, formatResult, VERSION, DEFAULT_API_URL, resolveBaseUrl } from "../cli.mjs";
+import { parseArgs, formatResult, formatApplyResponse, formatProblem, VERSION, DEFAULT_API_URL, resolveBaseUrl } from "../cli.mjs";
 
 test("VERSION is a semver string", () => {
   assert.match(VERSION, /^\d+\.\d+\.\d+/);
@@ -80,6 +80,12 @@ test("formatResult: labels applied vs plan and shows pruned", () => {
   assert.ok(out.includes("2 pruned"));
 });
 
+test("formatResult: counts existing metrics the document only references", () => {
+  const out = formatResult({ dry_run: true, summary: { created: 0, updated: 0, unchanged: 2, referenced: 3 }, diff: {} });
+  assert.ok(out.startsWith("Plan: 0 created, 0 updated, 2 unchanged, 3 existing referenced"));
+  assert.ok(!formatResult({ dry_run: true, summary: { created: 1 }, diff: {} }).includes("referenced"));
+});
+
 test("formatResult: prints non-fatal warnings on plan and on validation errors", () => {
   const warnings = [{ path: "incidents", message: "incidents are not managed by config; manage incidents via the API" }];
   const plan = formatResult({ dry_run: true, summary: { created: 0, updated: 0, unchanged: 1 }, diff: {}, warnings });
@@ -101,4 +107,44 @@ test("resolveBaseUrl: OBSERVER_API_URL overrides, legacy api. host still accepte
   assert.equal(resolveBaseUrl("https://api.use.observer"), "https://api.use.observer");
   assert.equal(resolveBaseUrl("https://api.use.observer/"), "https://api.use.observer");
   assert.equal(resolveBaseUrl("http://localhost:3000//"), "http://localhost:3000");
+});
+
+test("formatApplyResponse: a 403 is the problem, not 'Config invalid' or 'Applied: 0'", () => {
+  const out = formatApplyResponse(
+    { ok: false, status: 403 },
+    {
+      title: "item_suspended_plan",
+      status: 403,
+      detail: "This configuration changes items that are suspended.",
+      errors: [{ path: "metrics.api", message: "suspended" }],
+    },
+  );
+  assert.ok(out.startsWith("Error 403: item_suspended_plan — This configuration changes items"));
+  assert.ok(out.includes("metrics.api: suspended"));
+  assert.ok(!out.includes("Config invalid"));
+  assert.ok(!out.includes("Applied"));
+});
+
+test("formatApplyResponse: 429 says when to retry (body or Retry-After)", () => {
+  assert.ok(formatApplyResponse({ ok: false, status: 429 }, { title: "rate_limited", status: 429, retry_after: 17 }).includes("retry after 17s"));
+  assert.ok(formatApplyResponse({ ok: false, status: 429, retryAfter: "9" }, null).includes("retry after 9s"));
+});
+
+test("formatApplyResponse: 413 and a non-JSON 502 report the status", () => {
+  assert.equal(
+    formatApplyResponse({ ok: false, status: 413 }, { title: "payload_too_large", status: 413, detail: "config body exceeds 1 MB" }),
+    "Error 413: payload_too_large — config body exceeds 1 MB",
+  );
+  assert.equal(formatApplyResponse({ ok: false, status: 502, statusText: "Bad Gateway" }, null), "Error 502: Bad Gateway");
+});
+
+test("formatApplyResponse: 422 config_invalid and success keep the old rendering", () => {
+  const invalid = formatApplyResponse({ ok: false, status: 422 }, { title: "config_invalid", errors: [{ path: "x", message: "y" }] });
+  assert.ok(invalid.includes("Config invalid (1 error)"));
+  assert.ok(formatApplyResponse({ ok: true, status: 200 }, { dry_run: true, summary: { created: 1 } }).startsWith("Plan: 1 created"));
+});
+
+test("formatProblem: carries the upgrade link", () => {
+  const out = formatProblem({ status: 403 }, { title: "quota_exceeded", upgrade: { label: "Pro", url: "https://use.observer/pricing" } });
+  assert.ok(out.includes("Upgrade to Pro: https://use.observer/pricing"));
 });

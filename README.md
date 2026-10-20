@@ -92,7 +92,7 @@ export OBSERVER_API_KEY="obs_pub_…"   # key with write:config / read:config
 # The older https://api.use.observer host serves the same API and still works.
 ```
 
-Create the key from **Settings → API keys** in the console and grant it the
+Create the key from **Developers → API keys** in the console and grant it the
 `write:config` scope (`read:config` is enough for `export`).
 
 ## Commands
