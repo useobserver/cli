@@ -168,7 +168,7 @@ export async function main(argv = process.argv.slice(2)) {
   const authHeaders = { Authorization: `Bearer ${key}` };
 
   if (args.cmd === "apply") {
-    const body = readFileSync(args.file ?? 0, "utf8"); // file or stdin
+    const body = readFileSync(args.file && args.file !== "-" ? args.file : 0, "utf8"); // file, or stdin for none or "-"
     const qs = new URLSearchParams();
     if (args.dryRun) qs.set("dryRun", "true");
     if (args.prune) qs.set("prune", "true");
